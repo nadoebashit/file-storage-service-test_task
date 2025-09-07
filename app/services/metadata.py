@@ -6,7 +6,15 @@ from io import BytesIO
 import tempfile
 import re
 import os
-import textract
+# import textract
+from __future__ import annotations
+import subprocess
+
+def _run_cmd(cmd: list[str], timeout: int = 10) -> str:
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    if res.returncode != 0:
+        raise RuntimeError(f"cmd failed: {' '.join(cmd)}\n{res.stderr}")
+    return res.stdout
 
 def extract_pdf_meta(data: bytes) -> dict[str, Any]:
     from io import BytesIO
@@ -36,24 +44,24 @@ def extract_docx_meta(data: bytes) -> dict[str, Any]:
 
 def extract_doc_meta(data: bytes) -> dict[str, object]:
     """
-    Best-effort для .doc:
-      - получаем чистый текст через textract (antiword/catdoc)
-      - считаем параграфы как блоки по пустым строкам
-      - оцениваем 'таблицы' эвристикой: линии с >=2 табами
-      - title/author/created не всегда доступны стабильно — вернём пустые строки
+    Best-effort для .doc без textract:
+      - пытаемся через antiword (UTF-8)
+      - при ошибке — через catdoc (-w)
+      - считаем параграфы как блоки, таблицы — по строкам с >=2 табами
+      - title/author/created могут быть пустыми (формат древний)
     """
-    # Пишем во временный .doc, textract работает по имени файла
     with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp:
         tmp.write(data)
-        tmp_path = tmp.name
+        path = tmp.name
     try:
-        raw = textract.process(tmp_path)  # bytes
-        text = raw.decode("utf-8", errors="ignore")
-        # параграфы: непустые блоки, разделённые \n\n
+        text = ""
+        try:
+            text = _run_cmd(["antiword", "-m", "UTF-8.txt", path])
+        except Exception:
+            text = _run_cmd(["catdoc", "-w", path])
+
         blocks = [b for b in re.split(r"\n\s*\n", text) if b.strip()]
         paragraphs = len(blocks)
-
-        # 'таблицы': строки с >=2 '\t' (очень грубо, но для тестового ок)
         tables = sum(1 for line in text.splitlines() if line.count("\t") >= 2)
 
         return {
@@ -65,6 +73,6 @@ def extract_doc_meta(data: bytes) -> dict[str, object]:
         }
     finally:
         try:
-            os.remove(tmp_path)
+            os.remove(path)
         except OSError:
             pass

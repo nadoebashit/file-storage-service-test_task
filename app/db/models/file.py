@@ -16,9 +16,9 @@ class File(Base):
     ext: Mapped[str] = mapped_column(String(10))
     size_bytes: Mapped[int] = mapped_column(Integer)
 
-    visibility: Mapped[Visibility] = mapped_column(Enum(Visibility), default=Visibility.PRIVATE, index=True)
-    status: Mapped[FileStatus] = mapped_column(Enum(FileStatus), default=FileStatus.PENDING, index=True)
-    metadata: Mapped[dict] = mapped_column(JSONB, default={})
+    visibility: Mapped[Visibility] = mapped_column(Enum(Visibility, name="visibility"), default=Visibility.PRIVATE, index=True)
+    status: Mapped[FileStatus] = mapped_column(Enum(FileStatus,name="filestatus"), default=FileStatus.PENDING, index=True)
+    meta: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     download_count: Mapped[int] = mapped_column(Integer, default=0)
 
     owner = relationship("User")

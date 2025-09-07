@@ -1,37 +1,50 @@
-[project]
-name = "file-storage-service"
-version = "0.1.0"
-description = ""
-authors = [
-    {name = "Abiabinurov",email = "Abiabinurov@gmail.com"}
-]
-readme = "README.md"
-requires-python = ">=3.10"
-dependencies = [
-    "fastapi (>=0.116.1,<0.117.0)",
-    "uvicorn[standard] (>=0.35.0,<0.36.0)",
-    "pydantic (>=2.11.7,<3.0.0)",
-    "pydantic-settings (>=2.10.1,<3.0.0)",
-    "sqlalchemy[asyncio] (>=2.0.43,<3.0.0)",
-    "asyncpg (>=0.30.0,<0.31.0)",
-    "alembic (>=1.16.5,<2.0.0)",
-    "passlib[bcrypt] (>=1.7.4,<2.0.0)",
-    "python-jose (>=3.5.0,<4.0.0)",
-    "python-multipart (>=0.0.20,<0.0.21)",
-    "textract (>=1.6.5,<2.0.0)",
-    "olefile (>=0.47,<0.48)",
-    "python-magic (>=0.4.27,<0.5.0)"
-]
-
-
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
-
 [tool.poetry]
 name = "file-storage-service"
 version = "0.1.0"
 description = "File storage service"
-authors = ["you <you@example.com>"]
+authors = ["Abiabinurov <Abiabinurov@gmail.com>"]
+# чтобы Poetry ставил только зависимости и не пытался инсталлить сам проект
 package-mode = false
 
+[tool.poetry.dependencies]
+python = "^3.12"
+
+# Web/API
+fastapi = ">=0.116.1,<0.117.0"
+uvicorn = { version = ">=0.35.0,<0.36.0", extras = ["standard"] }
+fastapi-pagination = ">=0.12,<1.0"
+
+# Config/validation
+pydantic = { version = ">=2.11.7,<3.0.0", extras = ["email"] }
+pydantic-settings = ">=2.10.1,<3.0.0"
+
+# DB
+sqlalchemy = { version = ">=2.0.43,<3.0.0", extras = ["asyncio"] }
+asyncpg = ">=0.30.0,<0.31.0"
+alembic = ">=1.16.5,<2.0.0"
+
+# Auth
+passlib = { version = ">=1.7.4,<2.0.0", extras = ["bcrypt"] }
+python-jose = ">=3.5.0,<4.0.0"
+python-multipart = ">=0.0.20,<0.0.21"
+
+# S3 / Celery / metadata
+boto3 = ">=1.34,<2.0"
+celery = { version = ">=5.4,<6.0", extras = ["redis"] }
+pypdf = ">=4.3,<5.0"
+python-docx = ">=1.1,<2.0"
+olefile = ">=0.47,<0.48"
+python-magic = ">=0.4.27,<0.5.0"
+six = "^1.16.0"
+python-dateutil = ">=2.9.0.post0,<3.0.0"
+
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.8.0"
+ruff = "^0.12.0"
+isort = "^5.13.2"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

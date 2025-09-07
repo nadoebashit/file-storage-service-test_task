@@ -1,9 +1,12 @@
+# app/api/routers/files.py
 import mimetypes
+from io import BytesIO
 from uuid import uuid4
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File as FileUpload, Form, HTTPException, UploadFile, Query, status
-from fastapi_pagination import Page, add_pagination, paginate
+from fastapi.responses import RedirectResponse
+from fastapi_pagination import Page, paginate
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, or_, select, update, delete
 
@@ -13,25 +16,12 @@ from app.db.models.file import File
 from app.db.models.enums import FileStatus, UserRole, Visibility
 from app.schemas.file import FileOut, UploadResponse, VisibilityIn
 from app.services.storage_s3 import S3Client
-from app.tasks.metadata import extract_metadata_task
+from app.tasks.extract_metadata import extract_metadata_task
 from app.utils.validators import ensure_upload_allowed
 from app.utils.magic import sniff_mime, ensure_mime_matches_ext
-from fastapi.responses import RedirectResponse
 
 router = APIRouter()
 
-
-content = await file.read()
-size = len(content)
-mime = file.content_type or (mimetypes.guess_type(filename)[0] or "application/octet-stream")
-
-# Проверка фактического MIME по сигнатуре
-detected = sniff_mime(content)
-if not ensure_mime_matches_ext(ext, detected):
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail=f"File content type mismatch: .{ext} vs {detected}",
-    )
 
 def _visibility_filter(user: User):
     if user.role in (UserRole.ADMIN, UserRole.MANAGER):
@@ -75,19 +65,28 @@ async def upload_file(
     current_user: User = Depends(get_current_user),
 ):
     filename = file.filename or "upload.bin"
-    ext = (filename.split(".")[-1]).lower() if "." in filename else ""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     content = await file.read()
     size = len(content)
-    mime = file.content_type or (mimetypes.guess_type(filename)[0] or "application/octet-stream")
 
+    # Фактический MIME по сигнатуре
+    detected = sniff_mime(content)  # напр. application/pdf
+    if ext and not ensure_mime_matches_ext(ext, detected):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File content type mismatch: .{ext} vs {detected}",
+        )
+    mime = file.content_type or (mimetypes.guess_type(filename)[0] or detected or "application/octet-stream")
+
+    # Валидации по роли/размеру/типу/видимости
     final_visibility = ensure_upload_allowed(current_user.role.value, ext, size, visibility.value)
 
-    s3_key = f"{current_user.department_id}/{current_user.id}/{uuid4()}.{ext}"
-    s3 = S3Client()
-    from io import BytesIO
+    # Загрузка в S3
+    key_tail = f"{uuid4()}.{ext}" if ext else str(uuid4())
+    s3_key = f"{current_user.department_id}/{current_user.id}/{key_tail}"
+    S3Client().upload_fileobj(s3_key, BytesIO(content))
 
-    s3.upload_fileobj(s3_key, BytesIO(content))
-
+    # Запись в БД
     rec = File(
         owner_id=current_user.id,
         department_id=current_user.department_id,
@@ -98,13 +97,13 @@ async def upload_file(
         size_bytes=size,
         visibility=Visibility(final_visibility),
         status=FileStatus.PENDING,
-        metadata={},
+        meta={},  # важно: meta, не metadata
     )
     db.add(rec)
     await db.commit()
     await db.refresh(rec)
 
-    # Celery task
+    # Celery: извлечение метаданных
     extract_metadata_task.delay(rec.id)
 
     return UploadResponse(
@@ -117,7 +116,7 @@ async def upload_file(
             mime_type=rec.mime_type,
             ext=rec.ext,
             download_count=rec.download_count,
-            metadata=rec.metadata,
+            metadata=rec.meta,
         )
     )
 
@@ -141,7 +140,7 @@ async def get_file_info(
         mime_type=rec.mime_type,
         ext=rec.ext,
         download_count=rec.download_count,
-        metadata=rec.metadata,
+        metadata=rec.meta,
     )
 
 
@@ -159,8 +158,7 @@ async def download_file(
     await db.execute(update(File).where(File.id == file_id).values(download_count=rec.download_count + 1))
     await db.commit()
 
-    s3 = S3Client()
-    url = s3.generate_presigned_url(rec.s3_key, expires_seconds=60)
+    url = S3Client().generate_presigned_url(rec.s3_key, expires_seconds=60)
     return RedirectResponse(url=url, status_code=307)
 
 
@@ -173,7 +171,7 @@ async def list_files(
     owner_id: Optional[int] = Query(None),
     department_id: Optional[int] = Query(None),
     ext: Optional[str] = Query(None, description="Расширение без точки, напр. pdf"),
-    order: str = Query("desc", regex="^(asc|desc)$"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),  # для Pydantic v2 используем pattern
 ):
     query = select(File)
     vf = _visibility_filter(current_user)
@@ -189,11 +187,9 @@ async def list_files(
     if ext:
         query = query.where(File.ext.ilike(ext.lower()))
     if department_id is not None:
-        # Только MANAGER/ADMIN могут фильтровать произвольный отдел.
         if current_user.role in (UserRole.ADMIN, UserRole.MANAGER):
             query = query.where(File.department_id == department_id)
         else:
-            # USER игнорируем чужие отделы: применим только свой.
             query = query.where(File.department_id == current_user.department_id)
 
     query = query.order_by(File.id.asc() if order == "asc" else File.id.desc())
@@ -209,7 +205,7 @@ async def list_files(
             mime_type=r.mime_type,
             ext=r.ext,
             download_count=r.download_count,
-            metadata=r.metadata,
+            metadata=r.meta,  # <-- фикс: meta, не metadata
         )
         for r in rows
     ]
@@ -229,11 +225,9 @@ async def delete_file(
     _ensure_delete_access(current_user, rec)
 
     # удаление из S3 и БД
-    s3 = S3Client()
     try:
-        s3.delete_object(rec.s3_key)
+        S3Client().delete_object(rec.s3_key)
     except Exception:
-        # если объект уже нет в S3 — удаляем запись в БД всё равно
         pass
 
     await db.execute(delete(File).where(File.id == file_id))
