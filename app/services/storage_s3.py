@@ -31,3 +31,6 @@ class S3Client:
         self._client.download_fileobj(self.bucket, key, buff)
         buff.seek(0)
         return buff.read()
+
+    def delete_object(self, key: str) -> None:
+        self._client.delete_object(Bucket=self.bucket, Key=key)

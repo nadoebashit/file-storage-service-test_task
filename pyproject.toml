@@ -17,7 +17,10 @@ dependencies = [
     "alembic (>=1.16.5,<2.0.0)",
     "passlib[bcrypt] (>=1.7.4,<2.0.0)",
     "python-jose (>=3.5.0,<4.0.0)",
-    "python-multipart (>=0.0.20,<0.0.21)"
+    "python-multipart (>=0.0.20,<0.0.21)",
+    "textract (>=1.6.5,<2.0.0)",
+    "olefile (>=0.47,<0.48)",
+    "python-magic (>=0.4.27,<0.5.0)"
 ]
 
 
@@ -25,8 +28,10 @@ dependencies = [
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry.group.dev.dependencies]
-black = "^25.1.0"
-ruff = "^0.12.12"
-isort = "^6.0.1"
+[tool.poetry]
+name = "file-storage-service"
+version = "0.1.0"
+description = "File storage service"
+authors = ["you <you@example.com>"]
+package-mode = false
 
