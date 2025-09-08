@@ -5,10 +5,9 @@ REST API файлового хранилища с ролями (user/manager/adm
 ## Команды для запуска проекта
 
 ```bash
-cp .env.example .env
+
 docker compose up -d --build
-docker compose exec api alembic upgrade head
-docker compose exec api python -m app.cli.seed
+
 ```
 
 ## Swagger url
