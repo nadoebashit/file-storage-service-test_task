@@ -1,41 +1,37 @@
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.security import decode_token
-from app.db.session import get_session
-from app.db.models.user import User
 from sqlalchemy import select
+from app.db.session import get_db
+
+from app.db.models.user import User
+from app.core.security import decode_access_token
 from app.db.models.enums import UserRole
 
+bearer_scheme = HTTPBearer(auto_error=False)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-
-async def get_db() -> AsyncSession:
-    async with get_session() as session:
-        yield session
-
-async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> User:
+async def get_current_user(
+    creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if not creds:
+        raise HTTPException(status_code=401, detail="Not authenticated", headers={"WWW-Authenticate": "Bearer"})
     try:
-        payload = decode_token(token)
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-    sub = payload.get("sub")
-    if not sub:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
-
-    user = await db.scalar(select(User).where(User.id == int(sub)))
-    if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive user")
+        payload = decode_access_token(creds.credentials)
+        user_id = int(payload["sub"])
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token", headers={"WWW-Authenticate": "Bearer"})
+    user = await db.scalar(select(User).where(User.id == user_id))
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found", headers={"WWW-Authenticate": "Bearer"})
     return user
-
-def require_manager_or_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in (UserRole.MANAGER, UserRole.ADMIN):
-        raise HTTPException(status_code=403, detail="Managers/Admins only")
-    return current_user
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admins only")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    return current_user
+
+def require_manager_or_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role not in (UserRole.MANAGER, UserRole.ADMIN):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Managers or admins only")
     return current_user

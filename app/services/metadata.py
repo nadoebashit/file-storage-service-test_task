@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import datetime
 from typing import Any
 from pypdf import PdfReader
@@ -7,7 +8,7 @@ import tempfile
 import re
 import os
 # import textract
-from __future__ import annotations
+
 import subprocess
 
 def _run_cmd(cmd: list[str], timeout: int = 10) -> str:

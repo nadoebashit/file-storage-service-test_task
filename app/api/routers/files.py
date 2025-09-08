@@ -10,13 +10,15 @@ from fastapi_pagination import Page, paginate
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import and_, or_, select, update, delete
 
-from app.core.deps import get_current_user, get_db
+from app.core.deps import get_current_user
+from app.db.session import get_db
+
 from app.db.models.user import User
 from app.db.models.file import File
 from app.db.models.enums import FileStatus, UserRole, Visibility
 from app.schemas.file import FileOut, UploadResponse, VisibilityIn
 from app.services.storage_s3 import S3Client
-from app.tasks.extract_metadata import extract_metadata_task
+from app.tasks.metadata import extract_metadata_task
 from app.utils.validators import ensure_upload_allowed
 from app.utils.magic import sniff_mime, ensure_mime_matches_ext
 

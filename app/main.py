@@ -3,7 +3,9 @@ from fastapi_pagination import add_pagination
 from app.api.routers.auth import router as auth_router
 from app.api.routers.files import router as files_router
 from app.api.routers.users import router as users_router 
+from fastapi.security import OAuth2PasswordBearer
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 app = FastAPI(title="File Storage Service", version="0.2.0")
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(files_router, prefix="/files", tags=["files"])
