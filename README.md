@@ -14,3 +14,8 @@ docker compose exec api python -m app.cli.seed
 ## Swagger url
 
 http://localhost:8000/docs
+
+## admin доступ
+
+email:admin@example.com
+passwrod:admin123
